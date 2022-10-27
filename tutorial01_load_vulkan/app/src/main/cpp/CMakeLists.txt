@@ -18,25 +18,31 @@ cmake_minimum_required(VERSION 3.4.1)
 project(vktuts)
 
 # Integrate GameActivity, refer to
-#     https://d.android.com/games/agdk/integrate-game-activity
+# https://d.android.com/games/agdk/integrate-game-activity
 # for the detailed instructions.
 find_package(game-activity REQUIRED CONFIG)
 
 set(SRC_DIR ${CMAKE_SOURCE_DIR})
 get_filename_component(REPO_ROOT_DIR
-    ${CMAKE_SOURCE_DIR}/../../../../..  ABSOLUTE)
+    ${CMAKE_SOURCE_DIR}/../../../../.. ABSOLUTE)
 set(COMMON_DIR ${REPO_ROOT_DIR}/common)
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
     main.cpp
+    vk_engine.cpp
+    vk_layerhelper.cpp
+    vkbootstrap/VkBootstrap.cpp
     ${COMMON_DIR}/vulkan_wrapper/vulkan_wrapper.cpp
     ${COMMON_DIR}/src/GameActivitySources.cpp)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -std=c++11 \
+set(LAYER_SRC_DIR ${ANDROID_NDK}/sources/third_party/vulkan/src)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Werror       \
+                     -Wno-unused-variable -DUSE_DEBUG_EXTENTIONS \
                      -DVK_USE_PLATFORM_ANDROID_KHR")
 
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    ${COMMON_DIR}/vulkan_wrapper)
+include_directories(${COMMON_DIR}/vulkan_wrapper ${LAYER_SRC_DIR}/include)
+
 target_link_libraries(${CMAKE_PROJECT_NAME}
     game-activity::game-activity
     log
