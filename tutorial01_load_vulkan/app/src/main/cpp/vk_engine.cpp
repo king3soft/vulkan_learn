@@ -4,6 +4,9 @@
 #include "vk_engine.h"
 #include "vkbootstrap/VkBootstrap.h"
 #include "vk_init.h"
+// #define VMA_IMPLEMENTATION
+// #include "vk_mem_alloc.h"
+
 // we want to immediately abort when there is an error. In normal engines this would give an error message to the user, or perform a dump of state.
 using namespace std;
 
@@ -74,6 +77,10 @@ static const char* VkResultString(VkResult err) {
 void VulkanEngine::init(android_app* app) {
     this->_app = app;
     this->init_vulkan(app);
+    this->init_vma();
+    // load meshes
+    this->load_meshes();
+
     // create the swapchain
     this->init_swapchain(app);
     this->init_commands();
@@ -86,6 +93,8 @@ void VulkanEngine::init(android_app* app) {
 
 void VulkanEngine::cleanup() {
     if (_isInitialized) {
+        vkDeviceWaitIdle(_device);
+
         vkFreeCommandBuffers(_device, _commandPool, 1, &_mainCommandBuffer);
 
         vkDestroyCommandPool(_device, _commandPool, nullptr);
@@ -102,8 +111,8 @@ void VulkanEngine::cleanup() {
         }
 
         //
-        vkDestroySemaphore(_device, _presentSemaphore, nullptr);
-        vkDestroySemaphore(_device, _renderSemaphore, nullptr);
+        this->_mainDeletionQueue.flush();
+
         vkDestroyDevice(_device, NULL);
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
         vkDestroyInstance(_instance, NULL);
@@ -111,6 +120,14 @@ void VulkanEngine::cleanup() {
         LOGI("VKEngine Cleanup");
     }
     this->_isInitialized = false;
+}
+
+void VulkanEngine::init_vma() {
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice         = _chosenGPU;
+    allocatorInfo.device                 = _device;
+    allocatorInfo.instance               = _instance;
+    VK_CHECK(vmaCreateAllocator(&allocatorInfo, &_allocator));
 }
 
 void VulkanEngine::init_vulkan(android_app* app) {
@@ -279,6 +296,7 @@ void VulkanEngine::init_sync_structures() {
     // we want to create the fence with the Create Signaled flag, so we can wait on it before using it on a GPU command (for the first frame)
     fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_renderFence));
+    this->_mainDeletionQueue.push_function([=]() { vkDestroyFence(_device, _renderFence, nullptr); });
 
     // for the semaphores we don't need any flags
     VkSemaphoreCreateInfo semaphoreCreateInfo = {};
@@ -287,7 +305,9 @@ void VulkanEngine::init_sync_structures() {
     semaphoreCreateInfo.flags                 = 0;
 
     VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_presentSemaphore));
+    this->_mainDeletionQueue.push_function([=]() { vkDestroySemaphore(_device, _presentSemaphore, nullptr); });
     VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_renderSemaphore));
+    this->_mainDeletionQueue.push_function([=]() { vkDestroySemaphore(_device, _renderSemaphore, nullptr); });
 }
 
 void VulkanEngine::draw() {
@@ -334,9 +354,14 @@ void VulkanEngine::draw() {
     rpInfo.clearValueCount = 1;
     rpInfo.pClearValues    = &clearValue;
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+    
+    //bind the mesh vertex buffer with offset 0
+	VkDeviceSize offset = 0;
+	vkCmdBindVertexBuffers(cmd, 0, 1, &_triangleMesh._vertexBuffer._buffer, &offset);
+    
+	//we can now draw the mesh
+	vkCmdDraw(cmd, _triangleMesh._vertices.size(), 1, 0, 0);
 
     // finalize the render pass
     vkCmdEndRenderPass(cmd);
@@ -395,13 +420,7 @@ bool VulkanEngine::load_shader_module(const char* filePath, VkShaderModule* outS
     AAsset_read(file, fileContent, fileLength);
 
     const uint32_t* content = (const uint32_t*)fileContent;
-    VkShaderModuleCreateInfo createInfo{
-        .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .pNext    = nullptr,
-        .flags    = 0,
-        .codeSize = fileLength,        
-        .pCode    = content
-    };
+    VkShaderModuleCreateInfo createInfo{.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .pNext = nullptr, .flags = 0, .codeSize = fileLength, .pCode = content};
 
     // check that the creation goes well.
     VkShaderModule shaderModule;
@@ -433,36 +452,90 @@ void VulkanEngine::init_pipelines() {
 
     // vertex input controls how to read vertices from vertex buffers. We aren't using it yet
     pipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();  // default
-    
+
     // input assembly is the configuration for drawing triangle lists, strips, or individual points.
     // we are just going to draw triangle list
     pipelineBuilder._inputAssembly = vkinit::input_assembly_create_info(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
-    //build viewport and scissor from the swapchain extents
-	pipelineBuilder._viewport.x = 0.0f;
-	pipelineBuilder._viewport.y = 0.0f;
-	pipelineBuilder._viewport.width = (float)_windowExtent.width;
-	pipelineBuilder._viewport.height = (float)_windowExtent.height;
-	pipelineBuilder._viewport.minDepth = 0.0f;
-	pipelineBuilder._viewport.maxDepth = 1.0f;
+    // build viewport and scissor from the swapchain extents
+    pipelineBuilder._viewport.x        = 0.0f;
+    pipelineBuilder._viewport.y        = 0.0f;
+    pipelineBuilder._viewport.width    = (float)_windowExtent.width;
+    pipelineBuilder._viewport.height   = (float)_windowExtent.height;
+    pipelineBuilder._viewport.minDepth = 0.0f;
+    pipelineBuilder._viewport.maxDepth = 1.0f;
 
-    pipelineBuilder._scissor.offset = { 0, 0 };
-	pipelineBuilder._scissor.extent = _windowExtent;
+    pipelineBuilder._scissor.offset = {0, 0};
+    pipelineBuilder._scissor.extent = _windowExtent;
 
-    //configure the rasterizer to draw filled triangles
-	pipelineBuilder._rasterizer = vkinit::rasterization_state_create_info(VK_POLYGON_MODE_FILL);
-    
-    //we don't use multisampling, so just run the default one
-	pipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
-    
-    //a single blend attachment with no blending and writing to RGBA
-	pipelineBuilder._colorBlendAttachment = vkinit::color_blend_attachment_state();
+    // configure the rasterizer to draw filled triangles
+    pipelineBuilder._rasterizer = vkinit::rasterization_state_create_info(VK_POLYGON_MODE_FILL);
 
-	//use the triangle layout we created
-	pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
+    // we don't use multisampling, so just run the default one
+    pipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
+
+    // a single blend attachment with no blending and writing to RGBA
+    pipelineBuilder._colorBlendAttachment = vkinit::color_blend_attachment_state();
+
+    // use the triangle layout we created
+    pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
+
+    // finally build the pipeline
+    _trianglePipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+
+    // build the mesh pipeline
+    VertexInputDescription vertexDescription = Vertex::get_vertex_description();
+
+    // connect the pipeline builder vertex input info to the one we get from Vertex
+    pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions    = vertexDescription.attributes.data();
+    pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
+
+    pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions    = vertexDescription.bindings.data();
+    pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertexDescription.bindings.size();
+
+    // clear the shader stages for the builder
+    pipelineBuilder._shaderStages.clear();
+
+    // compile mesh vertex shader
+    VkShaderModule meshVertShader;
+    if (!this->load_shader_module("shaders/tri_mesh.vert.spv", &meshVertShader)) {
+        LOGE("Error when building the triangle vertex shader module");
+    } else {
+        LOGI("tri_mesh.vert.spv vertex shader successfully loaded");
+    }
+    // add the other shaders
+    pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
+    // make sure that triangleFragShader is holding the compiled colored_triangle.frag
+    pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
+
+    //we start from just the default empty pipeline layout info
+    VkPipelineLayoutCreateInfo mesh_pipeline_layout_info = vkinit::pipeline_layout_create_info();
+    // VkPushConstantRange push_constant;
+    // push_constant.offset = 0;
+    // push_constant.size = sizeof(MeshPushConstants);
+    // push_constant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    // mesh_pipeline_layout_info.pPushConstantRanges = &push_constant;
+	// mesh_pipeline_layout_info.pushConstantRangeCount = 1;
+    VK_CHECK(vkCreatePipelineLayout(_device, &mesh_pipeline_layout_info, nullptr, &_meshPipelineLayout));
     
-    //finally build the pipeline
-	_trianglePipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+    //pipelineBuilder._pipelineLayout = _meshPipelineLayout;
+
+    // build the mesh triangle pipeline
+    _meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+
+    // deleting all of the vulkan shaders
+    vkDestroyShaderModule(_device, meshVertShader, nullptr);
+    vkDestroyShaderModule(_device, vertexShader, nullptr);
+    vkDestroyShaderModule(_device, fragmentShader, nullptr);
+
+    // adding the pipelines to the deletion queue
+    _mainDeletionQueue.push_function([=]() {
+        vkDestroyPipeline(_device, _trianglePipeline, nullptr);
+        vkDestroyPipeline(_device, _meshPipeline, nullptr);
+
+        vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
+        vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
+    });
 }
 
 VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
@@ -516,3 +589,50 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
         return newPipeline;
     }
 }
+
+void VulkanEngine::load_meshes() {
+    // make the array 3 vertices long
+    _triangleMesh._vertices.resize(3);
+
+    // vertex positions
+    _triangleMesh._vertices[0].position = {1.f, 1.f, 0.0f};
+    _triangleMesh._vertices[1].position = {-1.f, 1.f, 0.0f};
+    _triangleMesh._vertices[2].position = {0.f, -1.f, 0.0f};
+
+    // vertex colors, all green
+    _triangleMesh._vertices[0].color = {0.f, 1.f, 0.0f};  // pure green
+    _triangleMesh._vertices[1].color = {0.f, 1.f, 0.0f};  // pure green
+    _triangleMesh._vertices[2].color = {0.f, 1.f, 0.0f};  // pure green
+
+    // we don't care about the vertex normals
+    upload_mesh(_triangleMesh);
+}
+
+void VulkanEngine::upload_mesh(Mesh& mesh) {
+    // allocate vertex buffer
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType              = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    // this is the total size, in bytes, of the buffer we are allocating
+    bufferInfo.size = mesh._vertices.size() * sizeof(Vertex);
+    // this buffer is going to be used as a Vertex Buffer
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+    // let the VMA library know that this data should be writeable by CPU, but also readable by GPU
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage                   = VMA_MEMORY_USAGE_CPU_TO_GPU;
+
+    // allocate the buffer
+    VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaallocInfo, &mesh._vertexBuffer._buffer, &mesh._vertexBuffer._allocation, nullptr));
+
+    // add the destruction of triangle mesh buffer to the deletion queue
+    _mainDeletionQueue.push_function([=]() { vmaDestroyBuffer(_allocator, mesh._vertexBuffer._buffer, mesh._vertexBuffer._allocation); });
+
+    // copy vertex data
+    void* data;
+    vmaMapMemory(_allocator, mesh._vertexBuffer._allocation, &data);
+    memcpy(data, mesh._vertices.data(), mesh._vertices.size() * sizeof(Vertex));
+    vmaUnmapMemory(_allocator, mesh._vertexBuffer._allocation);
+}
+
+#define VMA_IMPLEMENTATION
+#include "vma/vk_mem_alloc.h"

@@ -1,8 +1,27 @@
 #pragma once
 // #include "vk_types.h"
 #include <iostream>
+#include <queue>
+#include <functional>
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include "vulkan_wrapper.h"
+#include "vma/vk_mem_alloc.h"
+#include "vk_mesh.h"
+
+struct DeletionQueue {
+    std::deque<std::function<void()>> deletors;
+
+    void push_function(std::function<void()>&& function) { deletors.push_back(function); }
+
+    void flush() {
+        // reverse iterate the deletion queue to execute all the functions
+        for (auto it = deletors.rbegin(); it != deletors.rend(); it++) {
+            (*it)();  // call functors
+        }
+
+        deletors.clear();
+    }
+};
 
 class VulkanEngine {
    public:
@@ -41,7 +60,16 @@ class VulkanEngine {
 
    private:
     VkPipelineLayout _trianglePipelineLayout;
+    VkPipelineLayout _meshPipelineLayout;
     VkPipeline _trianglePipeline;
+    VkPipeline _meshPipeline;
+
+    Mesh _triangleMesh;
+
+   private:
+    VmaAllocator _allocator;  // vma lib allocator
+   private:
+    DeletionQueue _mainDeletionQueue;
 
    public:
     bool _isInitialized{false};
@@ -63,6 +91,7 @@ class VulkanEngine {
 
    private:
     void init_vulkan(android_app* app);
+    void init_vma();
     void init_swapchain(android_app* app);
     void init_commands();
     void init_default_renderpass();
@@ -73,6 +102,10 @@ class VulkanEngine {
     // loads a shader module from a spir-v file. Returns false if it errors
     bool load_shader_module(const char* filePath, VkShaderModule* outShaderModule);
     void init_pipelines();
+
+    //
+    void load_meshes();
+    void upload_mesh(Mesh& mesh);
 };
 
 class PipelineBuilder {

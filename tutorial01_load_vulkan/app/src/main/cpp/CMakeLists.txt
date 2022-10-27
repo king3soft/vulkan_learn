@@ -27,9 +27,12 @@ get_filename_component(REPO_ROOT_DIR
     ${CMAKE_SOURCE_DIR}/../../../../.. ABSOLUTE)
 set(COMMON_DIR ${REPO_ROOT_DIR}/common)
 
+add_library(glm INTERFACE)
+
 add_library(${CMAKE_PROJECT_NAME} SHARED
     main.cpp
     vk_engine.cpp
+    vk_mesh.cpp
     vk_layerhelper.cpp
     vkbootstrap/VkBootstrap.cpp
     ${COMMON_DIR}/vulkan_wrapper/vulkan_wrapper.cpp
@@ -37,11 +40,12 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
 
 set(LAYER_SRC_DIR ${ANDROID_NDK}/sources/third_party/vulkan/src)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Werror       \
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2a -Werror       \
                      -Wno-unused-variable -DUSE_DEBUG_EXTENTIONS \
                      -DVK_USE_PLATFORM_ANDROID_KHR")
 
-include_directories(${COMMON_DIR}/vulkan_wrapper ${LAYER_SRC_DIR}/include)
+target_include_directories(glm INTERFACE glm)
+include_directories(${COMMON_DIR}/vulkan_wrapper ${LAYER_SRC_DIR}/include ${CMAKE_SOURCE_DIR}/glm)
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
     game-activity::game-activity
