@@ -6,6 +6,9 @@
 
 class VulkanEngine {
    public:
+    android_app* _app;
+
+   public:
     VkInstance _instance;                       // Vulkan library handle
     VkDebugUtilsMessengerEXT _debug_messenger;  // Vulkan debug output handle
     VkSurfaceKHR _surface;                      // Vulkan window surface
@@ -36,6 +39,10 @@ class VulkanEngine {
    public:
     std::vector<VkFramebuffer> _framebuffers;
 
+   private:
+    VkPipelineLayout _trianglePipelineLayout;
+    VkPipeline _trianglePipeline;
+
    public:
     bool _isInitialized{false};
     int _frameNumber{0};
@@ -60,5 +67,25 @@ class VulkanEngine {
     void init_commands();
     void init_default_renderpass();
     void init_framebuffers();
-	void init_sync_structures();
+    void init_sync_structures();
+    // shader module
+
+    // loads a shader module from a spir-v file. Returns false if it errors
+    bool load_shader_module(const char* filePath, VkShaderModule* outShaderModule);
+    void init_pipelines();
+};
+
+class PipelineBuilder {
+   public:
+    std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
+    VkPipelineVertexInputStateCreateInfo _vertexInputInfo;
+    VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
+    VkViewport _viewport;
+    VkRect2D _scissor;
+    VkPipelineRasterizationStateCreateInfo _rasterizer;
+    VkPipelineColorBlendAttachmentState _colorBlendAttachment;
+    VkPipelineMultisampleStateCreateInfo _multisampling;
+    VkPipelineLayout _pipelineLayout;
+
+    VkPipeline build_pipeline(VkDevice device, VkRenderPass pass);
 };
