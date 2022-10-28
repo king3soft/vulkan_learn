@@ -25,7 +25,9 @@ find_package(game-activity REQUIRED CONFIG)
 set(SRC_DIR ${CMAKE_SOURCE_DIR})
 get_filename_component(REPO_ROOT_DIR
     ${CMAKE_SOURCE_DIR}/../../../../.. ABSOLUTE)
+
 set(COMMON_DIR ${REPO_ROOT_DIR}/common)
+set(THIRD_PARTY_DIR ${REPO_ROOT_DIR}/third_party)
 
 add_library(glm INTERFACE)
 
@@ -45,7 +47,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Werror       \
                      -DVK_USE_PLATFORM_ANDROID_KHR")
 
 target_include_directories(glm INTERFACE glm)
-include_directories(${COMMON_DIR}/vulkan_wrapper ${LAYER_SRC_DIR}/include ${CMAKE_SOURCE_DIR}/glm)
+
+include_directories(${COMMON_DIR}/vulkan_wrapper
+    ${LAYER_SRC_DIR}/include
+    ${CMAKE_SOURCE_DIR}/glm
+    ${THIRD_PARTY_DIR})
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
     game-activity::game-activity
