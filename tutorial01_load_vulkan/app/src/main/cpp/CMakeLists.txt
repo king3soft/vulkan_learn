@@ -36,9 +36,10 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
     vk_engine.cpp
     vk_mesh.cpp
     vk_layerhelper.cpp
-    vkbootstrap/VkBootstrap.cpp
+    vkbootstrap/VkBootstrap.cpp    
     ${COMMON_DIR}/vulkan_wrapper/vulkan_wrapper.cpp
-    ${COMMON_DIR}/src/GameActivitySources.cpp)
+    ${COMMON_DIR}/src/GameActivitySources.cpp
+    ${THIRD_PARTY_DIR}/tinyobjloader/tiny_obj_loader.cc)
 
 set(LAYER_SRC_DIR ${ANDROID_NDK}/sources/third_party/vulkan/src)
 

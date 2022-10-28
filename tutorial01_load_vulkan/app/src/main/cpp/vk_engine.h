@@ -65,7 +65,7 @@ class VulkanEngine {
     VkPipeline _meshPipeline;
 
     Mesh _triangleMesh;
-
+    Mesh _monkeyMesh;
    private:
     VmaAllocator _allocator;  // vma lib allocator
    private:

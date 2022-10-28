@@ -30,8 +30,7 @@ struct Mesh {
     std::vector<Vertex> _vertices;
 
     AllocatedBuffer _vertexBuffer;
-
-    bool load_from_obj(const char* filename);
+    bool load_from_obj(AAssetManager* AssetManager, const char* filename);
 };
 
 struct MeshPushConstants {

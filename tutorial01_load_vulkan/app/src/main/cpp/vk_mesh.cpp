@@ -1,5 +1,11 @@
+#include <iostream>
+#include <istream>
+#include <streambuf>
+#include <string>
+#include <tinyobjloader/tiny_obj_loader.h>
+#include <game-activity/native_app_glue/android_native_app_glue.h>
+#include "log.h"
 #include "vk_mesh.h"
-#include <stb/tiny_obj_loader.h>
 
 VertexInputDescription Vertex::get_vertex_description() {
     VertexInputDescription description;
@@ -39,7 +45,11 @@ VertexInputDescription Vertex::get_vertex_description() {
     return description;
 }
 
-bool Mesh::load_from_obj(const char* filename) {
+struct membuf : std::streambuf {
+    membuf(char* begin, char* end) { this->setg(begin, begin, end); }
+};
+
+bool Mesh::load_from_obj(AAssetManager* mgr, const char* filename) {
     // attrib will contain the vertex arrays of the file
     tinyobj::attrib_t attrib;
 
@@ -54,7 +64,20 @@ bool Mesh::load_from_obj(const char* filename) {
     std::string err;
 
     // load the OBJ file
-    tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename, nullptr);
+    AAsset* file      = AAssetManager_open(mgr, filename, AASSET_MODE_BUFFER);
+    size_t fileLength = AAsset_getLength(file);
+
+    char* buffer = new char[fileLength];
+	AAsset_read(file, buffer, fileLength);
+
+    membuf sbuf(buffer, buffer + fileLength*sizeof(char));
+    std::istream in(&sbuf);	
+
+    tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, &in, nullptr);
+    delete[] buffer;
+	
+	//
+	LOGI("load_from_obj %s fileLength=%lu, shapes=%lu", filename, fileLength, shapes.size());
 
     // make sure to output the warnings to the console, in case there are issues with the file
     if (!warn.empty()) {
@@ -64,7 +87,50 @@ bool Mesh::load_from_obj(const char* filename) {
     // if we have any error, print it to the console, and break the mesh loading.
     // This happens if the file can't be found or is malformed
     if (!err.empty()) {
-		LOGE("ERROR: %s", err.c_str());
+        LOGE("ERROR: %s", err.c_str());
         return false;
     }
+
+    // Loop over shapes
+    for (size_t s = 0; s < shapes.size(); s++) {
+        // Loop over faces(polygon)
+        size_t index_offset = 0;
+        for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+            // hardcode loading to triangles
+            int fv = 3;
+
+            // Loop over vertices in the face.
+            for (size_t v = 0; v < fv; v++) {
+                // access to vertex
+                tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+
+                // vertex position
+                tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
+                tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
+                tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
+                // vertex normal
+                tinyobj::real_t nx = attrib.normals[3 * idx.normal_index + 0];
+                tinyobj::real_t ny = attrib.normals[3 * idx.normal_index + 1];
+                tinyobj::real_t nz = attrib.normals[3 * idx.normal_index + 2];
+
+                // copy it into our vertex
+                Vertex new_vert;
+                new_vert.position.x = vx;
+                new_vert.position.y = vy;
+                new_vert.position.z = vz;
+
+                new_vert.normal.x = nx;
+                new_vert.normal.y = ny;
+                new_vert.normal.z = nz;
+
+                // we are setting the vertex color as the vertex normal. This is just for display purposes
+                new_vert.color = new_vert.normal;
+
+                _vertices.push_back(new_vert);
+            }
+            index_offset += fv;
+        }
+    }
+
+    return true;
 };

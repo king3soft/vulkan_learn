@@ -4,34 +4,12 @@
 #include "vk_engine.h"
 #include "vkbootstrap/VkBootstrap.h"
 #include "vk_init.h"
+#include "log.h"
 // #define VMA_IMPLEMENTATION
 // #include "vk_mem_alloc.h"
 
 // we want to immediately abort when there is an error. In normal engines this would give an error message to the user, or perform a dump of state.
 using namespace std;
-
-static const char* kTAG = "VKEngine";
-#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, kTAG, __VA_ARGS__))
-#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, kTAG, __VA_ARGS__))
-#define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, kTAG, __VA_ARGS__))
-
-#define VK_CHECK(x)                                                 \
-    do {                                                            \
-        VkResult err = x;                                           \
-        if (err) {                                                  \
-            LOGE("Detected Vulkan error: %s", VkResultString(err)); \
-            abort();                                                \
-        }                                                           \
-    } while (0)
-
-// #define VK_CHECK_RESULT(f)                                                                                                   \
-//     {                                                                                                                        \
-//         VkResult res = (f);                                                                                                  \
-//         if (res != VK_SUCCESS) {                                                                                             \
-//             LOGE("Fatal : VkResult is \" %s \" in %s at line %d", vks::tools::errorString(res).c_str(), __FILE__, __LINE__); \
-//             assert(res == VK_SUCCESS);                                                                                       \
-//         }                                                                                                                    \
-//     }
 
 static const char* VkResultString(VkResult err) {
     switch (err) {
@@ -355,34 +333,41 @@ void VulkanEngine::draw() {
     rpInfo.pClearValues    = &clearValue;
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
-    
-    //bind the mesh vertex buffer with offset 0
-	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(cmd, 0, 1, &_triangleMesh._vertexBuffer._buffer, &offset);
 
-    //make a model view matrix for rendering the object
-    //camera position
-    glm::vec3 camPos = { 0.f,0.f,-2.f };
+    // bind the mesh vertex buffer with offset 0
+    //VkDeviceSize offset = 0;
+    //vkCmdBindVertexBuffers(cmd, 0, 1, &_triangleMesh._vertexBuffer._buffer, &offset);
+    
+    // bind the mesh vertex buffer with offset 0
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &_monkeyMesh._vertexBuffer._buffer, &offset);
+
+    // make a model view matrix for rendering the object
+    // camera position
+    glm::vec3 camPos = {0.f, 0.f, -2.f};
 
     glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
-    
-    //camera projection
+
+    // camera projection
     glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
     projection[1][1] *= -1;
-     //model rotation
-    glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(_frameNumber * 0.4f), glm::vec3(0, 1, 0));
-    
-    //calculate final mesh matrix
+    // model rotation
+    glm::mat4 model = glm::rotate(glm::mat4{1.0f}, glm::radians(_frameNumber * 0.4f), glm::vec3(0, 1, 0));
+
+    // calculate final mesh matrix
     glm::mat4 mesh_matrix = projection * view * model;
-    
+
     MeshPushConstants constants;
     constants.render_matrix = mesh_matrix;
-    
-    //upload the matrix to the GPU via push constants
+
+    // upload the matrix to the GPU via push constants
     vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
 
-	//we can now draw the mesh    
-	vkCmdDraw(cmd, _triangleMesh._vertices.size(), 1, 0, 0);
+    // we can now draw the mesh
+    // vkCmdDraw(cmd, _triangleMesh._vertices.size(), 1, 0, 0);    
+
+    // we can now draw the mesh
+    vkCmdDraw(cmd, _monkeyMesh._vertices.size(), 1, 0, 0);
 
     // finalize the render pass
     vkCmdEndRenderPass(cmd);
@@ -459,7 +444,7 @@ void VulkanEngine::init_pipelines() {
     // shader module loading
     VkShaderModule vertexShader, fragmentShader;
     this->load_shader_module("shaders/tri.vert.spv", &vertexShader);
-    this->load_shader_module("shaders/tri.frag.spv", &fragmentShader);
+    this->load_shader_module("shaders/mesh.frag.spv", &fragmentShader);
 
     // build the pipeline layout that controls the inputs/outputs of the shader
     // we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
@@ -529,16 +514,16 @@ void VulkanEngine::init_pipelines() {
     // make sure that triangleFragShader is holding the compiled colored_triangle.frag
     pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
 
-    //we start from just the default empty pipeline layout info
+    // we start from just the default empty pipeline layout info
     VkPipelineLayoutCreateInfo mesh_pipeline_layout_info = vkinit::pipeline_layout_create_info();
     VkPushConstantRange push_constant;
-    push_constant.offset = 0;
-    push_constant.size = sizeof(MeshPushConstants);
-    push_constant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    mesh_pipeline_layout_info.pPushConstantRanges = &push_constant;
-	mesh_pipeline_layout_info.pushConstantRangeCount = 1;
+    push_constant.offset                             = 0;
+    push_constant.size                               = sizeof(MeshPushConstants);
+    push_constant.stageFlags                         = VK_SHADER_STAGE_VERTEX_BIT;
+    mesh_pipeline_layout_info.pPushConstantRanges    = &push_constant;
+    mesh_pipeline_layout_info.pushConstantRangeCount = 1;
     VK_CHECK(vkCreatePipelineLayout(_device, &mesh_pipeline_layout_info, nullptr, &_meshPipelineLayout));
-    
+
     pipelineBuilder._pipelineLayout = _meshPipelineLayout;
 
     // build the mesh triangle pipeline
@@ -625,8 +610,12 @@ void VulkanEngine::load_meshes() {
     _triangleMesh._vertices[1].color = {0.f, 1.f, 0.0f};  // pure green
     _triangleMesh._vertices[2].color = {0.f, 1.f, 0.0f};  // pure green
 
+    // load the monkey
+    _monkeyMesh.load_from_obj(this->_app->activity->assetManager, "monkey_smooth.obj");
+
     // we don't care about the vertex normals
     upload_mesh(_triangleMesh);
+    upload_mesh(_monkeyMesh);
 }
 
 void VulkanEngine::upload_mesh(Mesh& mesh) {
