@@ -40,7 +40,7 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
 
 set(LAYER_SRC_DIR ${ANDROID_NDK}/sources/third_party/vulkan/src)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2a -Werror       \
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Werror       \
                      -Wno-unused-variable -DUSE_DEBUG_EXTENTIONS \
                      -DVK_USE_PLATFORM_ANDROID_KHR")
 
