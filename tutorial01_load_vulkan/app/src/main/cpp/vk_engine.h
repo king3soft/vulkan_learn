@@ -64,8 +64,18 @@ class VulkanEngine {
     VkPipeline _trianglePipeline;
     VkPipeline _meshPipeline;
 
+   private:
+    VkImageView _depthImageView;
+    AllocatedImage _depthImage;
+    
+    //the format for the depth image
+	VkFormat _depthFormat;
+
+
+
     Mesh _triangleMesh;
     Mesh _monkeyMesh;
+
    private:
     VmaAllocator _allocator;  // vma lib allocator
    private:
@@ -118,6 +128,7 @@ class PipelineBuilder {
     VkPipelineRasterizationStateCreateInfo _rasterizer;
     VkPipelineColorBlendAttachmentState _colorBlendAttachment;
     VkPipelineMultisampleStateCreateInfo _multisampling;
+    VkPipelineDepthStencilStateCreateInfo _depthStencil;
     VkPipelineLayout _pipelineLayout;
 
     VkPipeline build_pipeline(VkDevice device, VkRenderPass pass);
