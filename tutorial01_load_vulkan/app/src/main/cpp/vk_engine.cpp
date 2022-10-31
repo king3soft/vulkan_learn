@@ -58,7 +58,6 @@ void VulkanEngine::init(android_app* app) {
     this->init_vma();
     // load meshes
     this->load_meshes();
-
     // create the swapchain
     this->init_swapchain(app);
     this->init_commands();
@@ -66,6 +65,7 @@ void VulkanEngine::init(android_app* app) {
     this->init_framebuffers();
     this->init_sync_structures();
     this->init_pipelines();
+    this->init_scene();
     this->_isInitialized = true;
 }
 
@@ -389,9 +389,9 @@ void VulkanEngine::draw() {
     float flash      = abs(sin(_frameNumber / 120.f));
     clearValue.color = {{0.0f, 0.0f, flash, 1.0f}};
 
-    //clear depth at 1
-	VkClearValue depthClear;
-	depthClear.depthStencil.depth = 1.f;
+    // clear depth at 1
+    VkClearValue depthClear;
+    depthClear.depthStencil.depth = 1.f;
 
     // start the main renderpass.
     // We will use the clear color from above, and the framebuffer of the index the swapchain gave us
@@ -405,10 +405,11 @@ void VulkanEngine::draw() {
     rpInfo.framebuffer           = _framebuffers[swapchainImageIndex];
 
     // connect clear values
-    rpInfo.clearValueCount = 2;
-    VkClearValue clearValues[] = { clearValue, depthClear };
-    rpInfo.pClearValues    = &clearValues[0];
+    rpInfo.clearValueCount     = 2;
+    VkClearValue clearValues[] = {clearValue, depthClear};
+    rpInfo.pClearValues        = &clearValues[0];
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+#if 0
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
 
     // bind the mesh vertex buffer with offset 0
@@ -445,6 +446,9 @@ void VulkanEngine::draw() {
 
     // we can now draw the mesh
     vkCmdDraw(cmd, _monkeyMesh._vertices.size(), 1, 0, 0);
+#else
+    draw_objects(cmd, _renderables.data(), _renderables.size());
+#endif
 
     // finalize the render pass
     vkCmdEndRenderPass(cmd);
@@ -607,6 +611,7 @@ void VulkanEngine::init_pipelines() {
 
     // build the mesh triangle pipeline
     _meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+    create_material(_meshPipeline, _meshPipelineLayout, "defaultmesh");
 
     // deleting all of the vulkan shaders
     vkDestroyShaderModule(_device, meshVertShader, nullptr);
@@ -665,8 +670,8 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
     pipelineInfo.subpass             = 0;
     pipelineInfo.basePipelineHandle  = VK_NULL_HANDLE;
 
-    //other states
-	pipelineInfo.pDepthStencilState = &_depthStencil;
+    // other states
+    pipelineInfo.pDepthStencilState = &_depthStencil;
 
     // it's easy to error out on create graphics pipeline, so we handle it a bit better than the common VK_CHECK case
     VkPipeline newPipeline;
@@ -698,6 +703,10 @@ void VulkanEngine::load_meshes() {
     // we don't care about the vertex normals
     upload_mesh(_triangleMesh);
     upload_mesh(_monkeyMesh);
+
+    //
+    this->_meshes["monkey"]   = _monkeyMesh;
+    this->_meshes["triangle"] = _triangleMesh;
 }
 
 void VulkanEngine::upload_mesh(Mesh& mesh) {
