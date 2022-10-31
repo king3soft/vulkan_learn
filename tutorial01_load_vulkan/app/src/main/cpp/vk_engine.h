@@ -149,9 +149,9 @@ class VulkanEngine {
     std::vector<VkFramebuffer> _framebuffers;
 
    private:
-    VkPipelineLayout _trianglePipelineLayout;
+    // VkPipelineLayout _trianglePipelineLayout;
     VkPipelineLayout _meshPipelineLayout;
-    VkPipeline _trianglePipeline;
+    // VkPipeline _trianglePipeline;
     VkPipeline _meshPipeline;
 
    private:
@@ -204,17 +204,17 @@ class VulkanEngine {
 
         _renderables.push_back(monkey);
 
-        for (int x = -20; x <= 20; x++) {
-            for (int y = -20; y <= 20; y++) {
-                RenderObject tri;
-                tri.mesh              = get_mesh("triangle");
-                tri.material          = get_material("defaultmesh");
-                glm::mat4 translation = glm::translate(glm::mat4{1.0}, glm::vec3(x, 0, y));
-                glm::mat4 scale       = glm::scale(glm::mat4{1.0}, glm::vec3(0.2, 0.2, 0.2));
-                tri.transformMatrix   = translation * scale;
-                _renderables.push_back(tri);
-            }
-        }
+        // for (int x = -20; x <= 20; x++) {
+        //     for (int y = -20; y <= 20; y++) {
+        //         RenderObject tri;
+        //         tri.mesh              = get_mesh("triangle");
+        //         tri.material          = get_material("defaultmesh");
+        //         glm::mat4 translation = glm::translate(glm::mat4{1.0}, glm::vec3(x, 0, y));
+        //         glm::mat4 scale       = glm::scale(glm::mat4{1.0}, glm::vec3(0.2, 0.2, 0.2));
+        //         tri.transformMatrix   = translation * scale;
+        //         _renderables.push_back(tri);
+        //     }
+        // }
     }
     // shader module
 
@@ -228,6 +228,9 @@ class VulkanEngine {
 };
 
 class PipelineBuilder {
+   public:
+    PipelineBuilder() {}
+
    public:
     std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
     VkPipelineVertexInputStateCreateInfo _vertexInputInfo;
