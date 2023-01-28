@@ -1,10 +1,10 @@
 // #include "vk_init.h"
 #include <android/log.h>
 #include <vector>
+#include <fstream>
 #include "vk_engine.h"
 #include "vkbootstrap/VkBootstrap.h"
 #include "vk_init.h"
-#include "log.h"
 // #define VMA_IMPLEMENTATION
 // #include "vk_mem_alloc.h"
 
@@ -66,6 +66,7 @@ void VulkanEngine::init(android_app* app) {
     this->init_sync_structures();
     this->init_pipelines();
     this->init_scene();
+    this->init_querypool(this->_device, 1024);
     this->_isInitialized = true;
 }
 
@@ -105,7 +106,7 @@ void VulkanEngine::init_vma() {
     allocatorInfo.physicalDevice         = _chosenGPU;
     allocatorInfo.device                 = _device;
     allocatorInfo.instance               = _instance;
-    VK_CHECK(vmaCreateAllocator(&allocatorInfo, &_allocator));
+    vmaCreateAllocator(&allocatorInfo, &_allocator);
 }
 
 void VulkanEngine::init_vulkan(android_app* app) {
@@ -181,6 +182,7 @@ void VulkanEngine::init_swapchain(android_app* app) {
     VmaAllocationCreateInfo dimg_allocinfo = {};
     dimg_allocinfo.usage                   = VMA_MEMORY_USAGE_GPU_ONLY;
     dimg_allocinfo.requiredFlags           = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    dimg_allocinfo.pUserData = (void*)"Image";
 
     // allocate and create the image
     vmaCreateImage(_allocator, &dimg_info, &dimg_allocinfo, &_depthImage._image, &_depthImage._allocation, nullptr);
@@ -408,7 +410,12 @@ void VulkanEngine::draw() {
     rpInfo.clearValueCount     = 2;
     VkClearValue clearValues[] = {clearValue, depthClear};
     rpInfo.pClearValues        = &clearValues[0];
+    auto query_count = 0;
+    vkCmdResetQueryPool(cmd, this->_vkQueryPool, query_count * 2, 2);
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, _vkQueryPool, query_count * 2);
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+
 #if 0
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
 
@@ -448,10 +455,25 @@ void VulkanEngine::draw() {
     vkCmdDraw(cmd, _monkeyMesh._vertices.size(), 1, 0, 0);
 #else
     draw_objects(cmd, _renderables.data(), _renderables.size());
+    //
+    char *stats_data = nullptr;
+    vmaBuildStatsString(_allocator, &stats_data, true);
+    std::ofstream out("/sdcard/" + std::to_string(_frameNumber) + ".stat");
+    out << stats_data;
+    out.close();
+    vmaFreeStatsString(_allocator, stats_data );
 #endif
 
     // finalize the render pass
     vkCmdEndRenderPass(cmd);
+//    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, _vkQueryPool, query_count * 2 + 1);
+//    uint64_t times[512];
+//    auto res = vkGetQueryPoolResults(_device, _vkQueryPool, 0, query_count * 2, sizeof(uint64_t) * query_count * 2, times, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+//    if (res == VK_SUCCESS) {
+//        LOGE("%ld", times[0]);
+//    }
+
+
     // finalize the command buffer (we can no longer add commands, but it can now be executed)
     VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -695,6 +717,7 @@ void VulkanEngine::upload_mesh(Mesh& mesh) {
     // let the VMA library know that this data should be writeable by CPU, but also readable by GPU
     VmaAllocationCreateInfo vmaallocInfo = {};
     vmaallocInfo.usage                   = VMA_MEMORY_USAGE_CPU_TO_GPU;
+    vmaallocInfo.pUserData = (void*)"Mesh";
 
     // allocate the buffer
     VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaallocInfo, &mesh._vertexBuffer._buffer, &mesh._vertexBuffer._allocation, nullptr));
@@ -707,6 +730,18 @@ void VulkanEngine::upload_mesh(Mesh& mesh) {
     vmaMapMemory(_allocator, mesh._vertexBuffer._allocation, &data);
     memcpy(data, mesh._vertices.data(), mesh._vertices.size() * sizeof(Vertex));
     vmaUnmapMemory(_allocator, mesh._vertexBuffer._allocation);
+}
+
+void VulkanEngine::init_querypool(VkDevice vkDevice, uint32_t count) {
+    //VkQueryPool vkQueryPool;
+    VkQueryPoolCreateInfo vkQueryPoolCreateInfo = {};
+    vkQueryPoolCreateInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    vkQueryPoolCreateInfo.pNext = nullptr;
+    vkQueryPoolCreateInfo.flags = 0;
+    vkQueryPoolCreateInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    vkQueryPoolCreateInfo.queryCount = count;
+    vkQueryPoolCreateInfo.pipelineStatistics = 0;
+    vkCreateQueryPool(vkDevice, &vkQueryPoolCreateInfo, nullptr, &this->_vkQueryPool);
 }
 
 #define VMA_IMPLEMENTATION

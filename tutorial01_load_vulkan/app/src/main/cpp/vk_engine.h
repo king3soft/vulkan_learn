@@ -9,6 +9,7 @@
 #include "vulkan_wrapper.h"
 #include "vma/vk_mem_alloc.h"
 #include "vk_mesh.h"
+#include "log.h"
 
 struct DeletionQueue {
     std::deque<std::function<void()>> deletors;
@@ -46,6 +47,7 @@ class VulkanEngine {
     std::unordered_map<std::string, Material> _materials;
     std::unordered_map<std::string, Mesh> _meshes;
 
+    VkQueryPool _vkQueryPool;
     // create material and add it to the map
     Material* create_material(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name) {
         Material mat;
@@ -195,6 +197,7 @@ class VulkanEngine {
     void init_default_renderpass();
     void init_framebuffers();
     void init_sync_structures();
+    void init_querypool(VkDevice vkDevice, uint32_t count);
     //
     void init_scene() {
         RenderObject monkey;
@@ -204,17 +207,17 @@ class VulkanEngine {
 
         _renderables.push_back(monkey);
 
-        // for (int x = -20; x <= 20; x++) {
-        //     for (int y = -20; y <= 20; y++) {
-        //         RenderObject tri;
-        //         tri.mesh              = get_mesh("triangle");
-        //         tri.material          = get_material("defaultmesh");
-        //         glm::mat4 translation = glm::translate(glm::mat4{1.0}, glm::vec3(x, 0, y));
-        //         glm::mat4 scale       = glm::scale(glm::mat4{1.0}, glm::vec3(0.2, 0.2, 0.2));
-        //         tri.transformMatrix   = translation * scale;
-        //         _renderables.push_back(tri);
-        //     }
-        // }
+         for (int x = -20; x <= 20; x++) {
+             for (int y = -20; y <= 20; y++) {
+                 RenderObject tri;
+                 tri.mesh              = get_mesh("triangle");
+                 tri.material          = get_material("defaultmesh");
+                 glm::mat4 translation = glm::translate(glm::mat4{1.0}, glm::vec3(x, 0, y));
+                 glm::mat4 scale       = glm::scale(glm::mat4{1.0}, glm::vec3(0.2, 0.2, 0.2));
+                 tri.transformMatrix   = translation * scale;
+                 _renderables.push_back(tri);
+             }
+         }
     }
     // shader module
 
